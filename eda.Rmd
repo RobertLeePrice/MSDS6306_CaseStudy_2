@@ -1,0 +1,81 @@
+---
+title: "Exploratory Data Analysis"
+author: "Robert"
+date: "2/8/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+```{r, message=False}
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(ggthemes)
+library(Hmisc)
+library(purrr)
+```
+
+## Load Datasets
+
+```{r}
+df <- read.csv('data/CaseStudy2-data.csv')
+
+head(df)
+```
+
+## Find Correlations in Dataset
+
+```{r}
+# create dataframe of numerical columns
+numeric_df <- df %>% 
+  # select only numeric columns
+  select(where(is.numeric)) %>%
+  # remove irrelevant columns
+  select(-c(ID, EmployeeCount, StandardHours))
+
+# function to create a dataframe of Pearson correlations
+cor_pairs <- function(df) {
+  
+  cdf <- data.frame(cor(df))
+  cdf <- cbind(Measure_1 = rownames(cdf), cdf)
+  rownames(cdf) <- NULL
+  
+  return (cdf)
+}
+
+# transform correlation dataframe into pair-wise correlations
+cor_df <- cor_pairs(numeric_df) %>%
+  pivot_longer(
+    cols=Age:YearsWithCurrManager, 
+    names_to = 'Measure_2', 
+    values_to = 'Correlation')
+
+# plot 
+cor_df %>% ggplot(aes(x=Measure_1, y=Measure_2, fill=Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(mid="#FBFEF9",low="#0C6291",high="#A63446", limits=c(-1,1)) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(x= NULL, y = NULL, fill = "Pearson's\nCorrelation", 
+       title="Pearson's Correlation for Numerical Variables") 
+
+# function to create a list of dataframes of correlations and p-values
+cors <- function(df) { 
+  
+  rcorr_df <- rcorr(as.matrix(df))
+  mapped_df <- (map(rcorr_df, ~data.frame(.x)))
+  
+  return (mapped_df)
+}
+
+cors(numeric_df)
+
+# https://towardsdatascience.com/customizable-correlation-plots-in-r-b1d2856a4b05
+
+```
