@@ -11,14 +11,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Load Libraries
 
-```{r, message=False}
-library(dplyr)
-library(tidyr)
-library(tibble)
+```{r, message=FALSE}
 library(ggplot2)
 library(ggthemes)
 library(Hmisc)
 library(purrr)
+library(dplyr)
+library(tidyr)
+library(tibble)
 ```
 
 ## Load Datasets
@@ -31,7 +31,8 @@ head(df)
 
 ## Find Correlations in Dataset
 
-```{r}
+```{r fig.width=10, fig.height=10, warning=FALSE}
+
 # create dataframe of numerical columns
 numeric_df <- df %>% 
   # select only numeric columns
@@ -39,43 +40,70 @@ numeric_df <- df %>%
   # remove irrelevant columns
   select(-c(ID, EmployeeCount, StandardHours))
 
-# function to create a dataframe of Pearson correlations
-cor_pairs <- function(df) {
-  
-  cdf <- data.frame(cor(df))
-  cdf <- cbind(Measure_1 = rownames(cdf), cdf)
-  rownames(cdf) <- NULL
-  
-  return (cdf)
-}
-
-# transform correlation dataframe into pair-wise correlations
-cor_df <- cor_pairs(numeric_df) %>%
-  pivot_longer(
-    cols=Age:YearsWithCurrManager, 
-    names_to = 'Measure_2', 
-    values_to = 'Correlation')
-
-# plot 
-cor_df %>% ggplot(aes(x=Measure_1, y=Measure_2, fill=Correlation)) +
-  geom_tile() +
-  scale_fill_gradient2(mid="#FBFEF9",low="#0C6291",high="#A63446", limits=c(-1,1)) +
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-  labs(x= NULL, y = NULL, fill = "Pearson's\nCorrelation", 
-       title="Pearson's Correlation for Numerical Variables") 
-
-# function to create a list of dataframes of correlations and p-values
-cors <- function(df) { 
+# function to create a list of dataframes of correlations, n, and p-values
+format_corr_df <- function(df, alpha) { 
   
   rcorr_df <- rcorr(as.matrix(df))
   mapped_df <- (map(rcorr_df, ~data.frame(.x)))
   
-  return (mapped_df)
+  res <- mapped_df %>% map(~rownames_to_column(.x, var="Measure_1")) %>%
+  map(~pivot_longer(.x, -Measure_1, "Measure_2")) %>%
+  bind_rows(.id = "id") %>%
+  pivot_wider(names_from = id, values_from = value) %>%
+  mutate(
+    sig_p = ifelse(P < alpha, T, F),
+    p_if_sig = ifelse(P < alpha, P, NA),
+    r_if_sig = ifelse(P < alpha, r, NA))
+  
+  return (res)
 }
 
-cors(numeric_df)
+# create a dataframe of 
+corr_df <- format_corr_df(numeric_df, 0.05)
 
-# https://towardsdatascience.com/customizable-correlation-plots-in-r-b1d2856a4b05
 
+corr_df %>%
+  ggplot(aes(x = Measure_1, y = Measure_2, fill = r, label=round(r_if_sig,2))) +
+  geom_tile() +
+  labs(
+    x = NULL, 
+    y = NULL, 
+    fill = "Pearson's\nCorrelation", 
+    title="Correlations in Employee Attrition",
+    subtitle="Only significant Pearson's correlation coefficients shown") +
+  scale_fill_gradient2(mid="#FBFEF9",low="#0C6291",high="#A63446", limits=c(-1,1)) +
+  geom_text(size=3) +
+  theme_classic() +
+  scale_x_discrete(expand=c(0,0)) +
+  scale_y_discrete(expand=c(0,0)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
+
+corr_df$Measures <- apply(corr_df[,c("Measure_1", "Measure_2")], 1, function(x) paste(sort(x), collapse = "-"))
+
+
+corr_df
+
+corr_df %>%
+  filter(sig_p, !duplicated(Measures)) %>%
+  arrange(desc(r)) %>%
+  head(10)
+```
+
+# Find the Overall Attrition Rate for the Dataset
+
+```{r}
+# calculate the percentage total attrition rate for the sample dataset
+total_attr_df <- df %>% 
+  group_by(Attrition) %>%
+  summarise(count = n()) %>%
+  mutate(freq = round(count / sum(count), 3))
+
+# save the attrition rate in a variable
+total_attr_rate <- total_attr_df[total_attr_df$Attrition == 'Yes', 'freq']
+
+# print the result
+paste0('The total attrition rate for the dataset is ', total_attr_rate * 100, '%')
 ```
