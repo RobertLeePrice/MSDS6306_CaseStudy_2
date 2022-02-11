@@ -1,0 +1,63 @@
+---
+title: "Attrition Classification Modeling"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(class)
+library(caret)
+library(e1071)
+library(earth)
+
+source('utils.R', local=knitr::knit_global())
+```
+
+## Load Datasets
+
+```{r}
+df <- read.csv('data/CaseStudy2-data.csv')
+```
+
+## Remove Irrelevant Columns from Data
+
+Some features in the dataset don't have meaningful information for data 
+analysis, such as "EmployeeNumber." These columns will be manually removed. 
+
+```{r}
+# manually remove columns that don't contain valuable data
+pruned_df <- df %>%
+  select(-c(EmployeeCount, EmployeeNumber, Over18, StandardHours))
+```
+
+## Data Partitioning
+
+#### Split the Dataset into Training and Testing Sets
+
+The train-test split procedure is used to estimate the performance of our
+algorithms by calculating performance on seen and unseen data. 
+
+```{r}
+# split data into training and testing sets
+train_test <- train_test_split(pruned_df, 0.70)
+
+# assign new dataframes
+train_df <- train_test$train
+test_df <- train_test$test
+
+paste0('Number of rows in training set: ', nrow(train_df))
+paste0('Number of rows in testing set: ', nrow(test_df))
+```
+
+## Classification : Naive Bayes 
+
+```{r}
+
+```

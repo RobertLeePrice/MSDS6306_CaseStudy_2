@@ -4,11 +4,11 @@ library(Hmisc)
 #' and p-values. 
 #' 
 #' Args 
-#'  df: dataframe of numeric features
-#'  alpha: significance level for p-value
+#'  df (data.frame): dataframe of numeric features
+#'  alpha (float): significance level for p-value
 #'  
-#' Returns
-#'  formatted dataframe
+#' Returns 
+#'  (data.frame) formatted dataframe
 format_corr_df <- function(df, alpha) { 
   
   # calculate correlation coefficients
@@ -26,4 +26,22 @@ format_corr_df <- function(df, alpha) {
       r_if_sig = ifelse(P < alpha, r, NA))
   
   return (res)
+}
+
+#' Function that splits a dataframe into a training set and test set based 
+#' on a specified split proportion
+#'
+#' Args
+#'  df (data.frame): input dataframe to be split
+#'  split_perc (int): percentage of data assigned to training set 
+#'  
+#' Returns
+#' (list) a list of dataframes: one training and one testing dataset
+train_test_split = function(df, split_perc){
+  
+  train_ind = sample(1:dim(df)[1], round(split_perc * dim(df)[1]))
+  train = df[train_ind,]
+  test = df[-train_ind,]
+  
+  return(list(train=train, test=test))
 }
