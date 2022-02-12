@@ -140,8 +140,6 @@ The logistic regression model performed better over the Naive Bayes classifier,
 so this is what we will use for the prediction.
 
 ```{r}
-head(pruned_unknown_df)
-
 logit_prediction_uk <- predict(lr, newdata=pruned_unknown_df, type='response')
 logit_prediction_uk <- ifelse(logit_prediction_uk > 0.3, 1, 0)
 

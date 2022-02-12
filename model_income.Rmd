@@ -1,0 +1,148 @@
+---
+title: "model_income"
+author: "Robert"
+date: "2/12/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(class)
+library(caret)
+library(e1071)
+library(earth)
+library(caTools)
+library(Metrics)
+library(MASS)
+library(ggthemes)
+
+source('utils.R', local=knitr::knit_global())
+```
+
+## Load Datasets
+
+```{r}
+df <- read.csv('data/CaseStudy2-data.csv')
+unknown_df <- read.csv('data/CaseStudy2CompSet No Salary.csv', fileEncoding='UTF-8-BOM')
+```
+
+## Remove Columns from Modeling 
+
+```{r}
+vars_remove <- c('EmployeeCount', 'EmployeeNumber', 'Over18', 'StandardHours',
+                 'HourlyRate', 'MonthlyRate', 'DailyRate', 'TotalWorkingYears',
+                 'YearsWithCurrManager')
+
+pruned_df <- df %>% dplyr::select(-vars_remove)
+pruned_unknown_df <- unknown_df %>% dplyr::select(-vars_remove)
+```
+
+## Transform Data Types
+
+```{r}
+# create vector of factors to convert
+vchars <- c(
+  'WorkLifeBalance', 
+  'JobSatisfaction',
+  'StockOptionLevel',
+  'RelationshipSatisfaction',
+  'PerformanceRating',
+  'JobLevel',
+  'JobInvolvement',
+  'EnvironmentSatisfaction',
+  'Education',
+  'EducationField')
+
+# convert the character variables into factors
+pruned_df[, vchars] = lapply(pruned_df[, vchars], as.factor)
+pruned_unknown_df[, vchars] = lapply(pruned_unknown_df[, vchars], as.factor)
+```
+
+## Split Data into Traning and Testing Sets
+
+```{r}
+# split data into training and testing sets
+train_test <- train_test_split(pruned_df, 0.70)
+
+# assign new dataframes
+train_df <- train_test$train
+test_df <- train_test$test
+
+paste0('Number of rows in training set: ', nrow(train_df))
+paste0('Number of rows in testing set: ', nrow(test_df))
+```
+
+```{r}
+# fit the linear model to the training dataset
+lm_fit <- lm(MonthlyIncome ~ ., data = train_df)
+
+# validate model using testing set
+lm_predictions <- predict(lm_fit, newdata = test_df)
+
+# join prediction results with ID
+prediction_results <- data.frame(
+  ID = test_df$ID, 
+  MonthlyIncome = test_df$MonthlyIncome,
+  Prediction = lm_predictions) %>%
+  mutate(Residual = MonthlyIncome - Prediction)
+
+# create a scatter plot of residuals
+prediction_results %>% ggplot(aes(x=ID, y=Residual)) + 
+  geom_point(color='#c0392b') +
+  geom_hline(yintercept=0) + 
+  labs(
+    title='Residuals Plot for Monthly Income',
+    x='Fitted Values',
+    y='Residual'
+  ) + 
+  theme_tufte()
+
+# create a histogram of residuals
+prediction_results %>% ggplot(aes(x=Residual)) + 
+  geom_histogram(aes(y=..density..), fill='#c0392b', color='white', bins=17) +
+  labs(
+    title='Histogram of Residuals for Monthly Income',
+    x='Residuals',
+    y=NULL
+  ) + 
+  theme_tufte()
+
+# scatterplot of predictions and residuals
+prediction_results %>% ggplot(aes(x=Prediction, y=MonthlyIncome)) +
+  geom_point(color='#0C6291', shape=1, alpha=0.9) + 
+  geom_abline(intercept=0, slope=1) +
+  labs(
+    title='Observed vs Predicted Values for Monthly Income',
+    x='Predicted',
+    y='Observed (Test Set)'
+  ) + 
+  theme_tufte()
+  
+lm_rmse <- rmse(test_df$MonthlyIncome, lm_predictions)
+
+paste0('The RMSE for the testing set is: ', lm_rmse)
+```
+
+## Predict Unknown Values
+
+```{r}
+lm_prediction_uk <- predict(lm_fit, newdata=pruned_unknown_df, type='response')
+
+# join prediction results with ID
+prediction_results <- data.frame(
+  ID = pruned_unknown_df$ID, 
+  MonthlyIncome = lm_prediction_uk)
+
+# output results to file
+write.csv(
+  prediction_results, 
+  'predictions/Case2PredictionsPrice-MonthlyIncome.csv',
+  row.names = F)
+```
