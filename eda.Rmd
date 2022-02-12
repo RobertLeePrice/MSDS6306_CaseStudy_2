@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Load Libraries
 
-```{r, message=FALSE}
+```{r, message=FALSE, warning=FALSE}
 library(ggplot2)
 library(ggthemes)
 library(purrr)
@@ -19,6 +19,7 @@ library(dplyr)
 library(tidyr)
 library(tibble)
 library(earth)
+library(ggformula)
 
 source('utils.R', local=knitr::knit_global())
 ```
@@ -38,6 +39,56 @@ analysis, such as "EmployeeNumber." These columns will be manually removed.
 # manually remove columns that don't contain valuable data
 pruned_df <- df %>%
   select(-c(EmployeeCount, EmployeeNumber, Over18, StandardHours))
+```
+
+## Find the Overall Attrition Rate for the Dataset
+
+For further analysis, we need to establish a baseline attrition rate. We can 
+calculate this for the sample dataset by simply dividing the attrition by
+the total number of observations. 
+
+```{r}
+# calculate the percentage total attrition rate for the sample dataset
+total_attr_df <- df %>% 
+  group_by(Attrition) %>%
+  summarise(count = n()) %>%
+  mutate(attr = round(count / sum(count), 3))
+
+# save the attrition rate in a variable
+total_attr_rate <- as.numeric(
+  total_attr_df[total_attr_df$Attrition == 'Yes', 'attr'])
+
+# print the result
+paste0('The total attrition rate for the dataset is ', total_attr_rate * 100, '%')
+```
+
+## Employee Attrition over Time
+
+```{r}
+# create scatterplot of employee attrition over time
+pruned_df %>%
+  group_by(YearsAtCompany, Attrition) %>%
+  summarise(count = n()) %>%
+  mutate(attr = round(count / sum(count), 3)) %>%
+  filter(Attrition == 'Yes', YearsAtCompany < 16) %>%
+  ggplot(aes(x=YearsAtCompany, y=attr)) +
+    geom_spline(color='#D3D3D3', size = 0.8) + 
+    geom_point(color='#0C6291', size = 2, shape = 16) + 
+    geom_hline(yintercept=total_attr_rate, color='#27ae60') +
+    annotate('text', x=15.5, y=total_attr_rate + 0.015, label='Avg.', color='#27ae60') +
+    labs(
+      x = 'Years at Company',
+      y = 'Attrition [%]',
+      title = 'Employee Attrition Over Time'
+    ) + 
+    theme_tufte() 
+
+# calculate the attrition rate for new employees (< 5 years of service)
+pruned_df %>%
+  filter(YearsAtCompany < 5) %>%
+  group_by(Attrition) %>%
+  summarise(count = n()) %>%
+  mutate(attr = round(count / sum(count), 3))
 ```
 
 ## Find Correlations in Dataset
@@ -119,35 +170,81 @@ pruned_df <- pruned_df %>%
   select(-c(JobLevel, TotalWorkingYears))
 ```
 
-## Find the Overall Attrition Rate for the Dataset
-
-For further analysis, we need to establish a baseline attrition rate. We can 
-calculate this for the sample dataset by simply dividing the attrition by
-the total number of observations. 
+## Relationship between Discrete Features and Attrition
 
 ```{r}
-# calculate the percentage total attrition rate for the sample dataset
-total_attr_df <- df %>% 
-  group_by(Attrition) %>%
-  summarise(count = n()) %>%
-  mutate(freq = round(count / sum(count), 3))
 
-# save the attrition rate in a variable
-total_attr_rate <- total_attr_df[total_attr_df$Attrition == 'Yes', 'freq']
+calculate_attr_by_group <- function(df, f) {
+  
+  res <- df %>%
+    group_by_(f, 'Attrition') %>%
+    summarise(count = n()) %>%
+    mutate(
+      feature = f,
+      attr = round(count / sum(count), 3),
+      total_attr = total_attr_rate) %>%
+    filter(Attrition == 'Yes') %>%
+    select(-Attrition) %>%
+    rename(category = toString(f)) %>%
+    select(feature, category, count, attr, total_attr)
 
-# print the result
-paste0('The total attrition rate for the dataset is ', total_attr_rate * 100, '%')
+  return(res)
+}
+
+# create vector of discrete features
+grps <- c(
+  'BusinessTravel', 
+  'Department',
+  'EducationField',
+  'Gender',
+  'JobRole',
+  'MaritalStatus',
+  'OverTime')
+
+g <- 'EducationField'
+
+attr_df <- calculate_attr_by_group(pruned_df, g)
+
+attr_df %>% ggplot(aes(x=reorder(category, attr), y=attr)) +
+  geom_segment(aes(xend=category, yend=total_attr_rate), color='#D3D3D3') +
+  geom_point(size=4, color='#0C6291') +
+  geom_hline(yintercept=total_attr_rate) +
+  coord_flip() +
+  labs(
+    x = NULL,
+    y = 'Attrition [%]',
+    title = 'Deviation from Total Attrition for Discrete Features',
+    subtitle = 'Higher Values Indicate Higher Attrition'
+  ) +
+  theme_tufte()
 ```
 
-##
+## Relationship between Continuous Features and Attrition
 
 ```{r}
+# f <- 'MonthlyIncome'
+# f <- 'DistanceFromHome'
+# f <- 'RelationshipSatisfaction'
+# f <- 'MonthlyRate'
+f <- 'PerformanceRating'
+
 pruned_df %>%
-  ggplot(aes(x=MonthlyIncome, color=Attrition)) + 
-  geom_density() + 
-  geom_vline(
-    aes(xintercept=mean(MonthlyIncome)), 
-    color="blue", linetype="dashed", size=1) 
+  ggplot(aes_string(x=f, fill='Attrition')) + 
+  geom_boxplot() +
+  scale_fill_manual(values=c('#0C6291', '#c0392b')) +
+  labs(
+    x = 'Value',
+    y = NULL,
+    title = paste0('Relationship Between Attrition and ', f)
+  ) +
+  theme_tufte()
+
+
+pruned_df %>%
+  ggplot(aes_string(x=f, fill='Attrition')) + 
+  geom_histogram(aes(y = ..density..)) +
+  facet_wrap(~Attrition)
+
 ```
 
 ## Data Preparation 
@@ -170,6 +267,7 @@ clean_df$Attrition = as.numeric(clean_df$Attrition)
 vchars <- c(
   'BusinessTravel', 
   'Department',
+  'Education',
   'EducationField',
   'Gender',
   'JobRole',
@@ -179,6 +277,7 @@ vchars <- c(
 # convert the character variables into factors
 clean_df[, vchars] = lapply(clean_df[, vchars], as.factor)
 ```
+
 
 ## Feature Selection with Multivariate Adaptive Regression Splines (MARS)
 
@@ -221,17 +320,27 @@ bagging algorithm.
 # estimate the variable importance from the MARS fit
 evi <- evimp(mars)
 
+# top n variables to highlight
+n <- 3
+
+# reformat dataframe and add row ranking
 evi_df <- as.data.frame(unclass(evi[, c(3,4,6)])) %>%
-  as_tibble(rownames='feature')
+  as_tibble(rownames='feature') %>%
+  mutate(
+    rank = rank(-nsubsets),
+    top_n = rank %in% 1:n
+  )
 
 # plot the estimated variable importance
 evi_df %>%
-  ggplot(aes(x=nsubsets, y=reorder(feature, nsubsets))) + 
-  geom_bar(stat='identity', fill='#0C6291', width=0.6) + 
+  ggplot(aes(x=nsubsets, y=reorder(feature, nsubsets), fill=top_n)) +
+  geom_bar(stat='identity', width=0.6) +
+  scale_fill_manual(values = c('TRUE'='#0C6291', 'FALSE'='#D3D3D3')) +
   labs(
     x = "Selected Criteria {nsubsets}",
     y = NULL,
     title = 'Estimated Feature Importance in Employee Attrition'
-  ) + 
-  theme_tufte()   
+  ) +
+  theme_tufte() + 
+  theme(legend.position = 'none')
 ```

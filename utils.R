@@ -45,3 +45,27 @@ train_test_split = function(df, split_perc){
   
   return(list(train=train, test=test))
 }
+
+#' Calculate scoring metrics from a confusion matrix.
+#' 
+#' Args
+#'  cm: confusion matrix
+#'  
+#' Returns  
+calculate_scoring_metrics <- function(cm) {
+  
+  tp <- cm_test[1, 1]
+  fn <- cm_test[1, 2]
+  fp <- cm_test[2, 1]
+  tn <- cm_test[2, 2]
+  
+  res <- data.frame(
+    sensitivity = tp / (tp + fn),
+    specificity = tn / (tn + fp),
+    precision = tp / (tp + fp),
+    accuracy = (tp + tn) / (tp + fn + fp + tn)
+  )
+  
+  return (res)
+}
+

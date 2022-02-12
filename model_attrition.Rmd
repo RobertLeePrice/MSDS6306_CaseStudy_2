@@ -1,5 +1,7 @@
 ---
-title: "Attrition Classification Modeling"
+title: "model_attrition"
+author: "Robert"
+date: "2/12/2022"
 output: html_document
 ---
 
@@ -9,13 +11,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Load Libraries
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(dplyr)
 library(ggplot2)
 library(class)
 library(caret)
 library(e1071)
 library(earth)
+library(caTools)
 
 source('utils.R', local=knitr::knit_global())
 ```
@@ -24,25 +27,42 @@ source('utils.R', local=knitr::knit_global())
 
 ```{r}
 df <- read.csv('data/CaseStudy2-data.csv')
+unknown_df <- read.csv('data/CaseStudy2CompSet No Attrition.csv')
 ```
 
-## Remove Irrelevant Columns from Data
-
-Some features in the dataset don't have meaningful information for data 
-analysis, such as "EmployeeNumber." These columns will be manually removed. 
+## Remove Columns from Modeling 
 
 ```{r}
-# manually remove columns that don't contain valuable data
-pruned_df <- df %>%
-  select(-c(EmployeeCount, EmployeeNumber, Over18, StandardHours))
+vars_remove <- c('EmployeeCount', 'EmployeeNumber', 'Over18', 'StandardHours',
+                 'HourlyRate', 'MonthlyRate', 'DailyRate', 'TotalWorkingYears',
+                 'YearsWithCurrManager')
+
+pruned_df <- df %>% select(-vars_remove)
+pruned_unknown_df <- unknown_df %>% select(-vars_remove)
 ```
 
-## Data Partitioning
+## Transform Data Types
 
-#### Split the Dataset into Training and Testing Sets
+```{r}
+# create vector of factors to convert
+vchars <- c(
+  'WorkLifeBalance', 
+  'JobSatisfaction',
+  'StockOptionLevel',
+  'RelationshipSatisfaction',
+  'PerformanceRating',
+  'JobLevel',
+  'JobInvolvement',
+  'EnvironmentSatisfaction',
+  'Education',
+  'EducationField')
 
-The train-test split procedure is used to estimate the performance of our
-algorithms by calculating performance on seen and unseen data. 
+# convert the character variables into factors
+pruned_df[, vchars] = lapply(pruned_df[, vchars], as.factor)
+pruned_unknown_df[, vchars] = lapply(pruned_unknown_df[, vchars], as.factor)
+```
+
+## Split Data into Traning and Testing Sets
 
 ```{r}
 # split data into training and testing sets
@@ -58,6 +78,85 @@ paste0('Number of rows in testing set: ', nrow(test_df))
 
 ## Classification : Naive Bayes 
 
-```{r}
+The Naive Bayes classifier is a simple probabilistic classifier which is based
+on Bayes theorem. The algorithm benefits in that it is fast and scales easily.
 
+```{r, warning=FALSE}
+# create features list
+features <- setdiff(names(pruned_df), 'Attrition')
+
+# create x and y variables for training set
+x <- train_df[, features]
+y <- train_df$Attrition
+
+# set up 10-fold cross validation procedure
+train_control <- trainControl(method = "cv", number = 10)
+
+# train Naive-Bayes model with 10-fold cross validation
+fit_nb <- train(
+  x = x,
+  y = y,
+  method = "nb",
+  trControl = train_control)
+
+# predict testing set
+nb_prediction <- predict(fit_nb, newdata = test_df)
+
+# results and scoring metrics
+confusionMatrix(
+  table(nb_prediction, test_df$Attrition)
+)
+```
+
+## Classification : Logistic Regression
+
+```{r}
+# change target data type for logistic regression
+lr_df <- pruned_df %>% mutate(Attrition = ifelse(Attrition == "No", 0, 1))
+
+# split data into training and testing sets
+train_test <- train_test_split(lr_df, 0.70)
+
+# assign new dataframes
+train_df <- train_test$train
+test_df <- train_test$test
+
+
+lr <- glm(Attrition ~., family=binomial(link='logit'), data=train_df)
+
+# predict testing set
+logit_prediction <- predict(lr, newdata=test_df, type='response')
+logit_prediction <- ifelse(logit_prediction > 0.3, 1, 0)
+
+# results and scoring metrics
+confusionMatrix(
+  table(logit_prediction, test_df$Attrition)
+)
+```
+
+## Predict Unknown Values
+
+The logistic regression model performed better over the Naive Bayes classifier,
+so this is what we will use for the prediction.
+
+```{r}
+head(pruned_unknown_df)
+
+logit_prediction_uk <- predict(lr, newdata=pruned_unknown_df, type='response')
+logit_prediction_uk <- ifelse(logit_prediction_uk > 0.3, 1, 0)
+
+# join prediction results with ID
+prediction_results <- data.frame(
+  ID = pruned_unknown_df$ID, 
+  Attrition = logit_prediction_uk)
+
+# convert (0, 1) attrition to (no, yes)
+prediction_results <- prediction_results %>% 
+  mutate(Attrition = ifelse(Attrition == 0, "No", "Yes"))
+
+# output results to file
+write.csv(
+  prediction_results, 
+  'predictions/Case2PredictionsPrice-Attrition.csv',
+  row.names = F)
 ```
