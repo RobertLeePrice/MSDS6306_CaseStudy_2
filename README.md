@@ -11,3 +11,7 @@ logistic regression and multiple linear regression.
 ## Video Link
 
 www.youtube.com/watch?v=uFBCkqPnDiE
+
+## Shiny App
+
+https://robertprice.shinyapps.io/attrition-app/
